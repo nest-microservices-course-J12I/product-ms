@@ -15,9 +15,8 @@ export class CreateProductDto {
   public price: number;
 }
 
-export class updateProductDto extends PartialType(CreateProductDto) {
+export class UpdateProductDto extends PartialType(CreateProductDto) {
   @IsNumber()
   @IsPositive()
-  id: number
-
+  id: number;
 }

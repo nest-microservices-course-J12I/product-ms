@@ -1,20 +1,20 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
-import { CreateProductDto, updateProductDto } from './dto/create-product.dto';
+import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+
+import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import { RpcException } from '@nestjs/microservices';
 import { PrismaClient } from '@prisma/client';
+
 import { PaginationDto } from 'src/common';
 
 @Injectable()
 export class ProductsService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger('ProductsService');
+
   onModuleInit() {
     this.$connect();
-    this.logger.log('Connected to the database');
+    this.logger.log('Database connected');
   }
+
   create(createProductDto: CreateProductDto) {
     return this.product.create({
       data: createProductDto,
@@ -24,59 +24,65 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
   async findAll(paginationDto: PaginationDto) {
     const { page, limit } = paginationDto;
 
-    const totalPage = await this.product.count({
-      where: { available: true },
-    });
-    const lastPage = Math.ceil(totalPage / limit);
+    const totalPages = await this.product.count({ where: { available: true } });
+    const lastPage = Math.ceil(totalPages / limit);
+
     return {
       data: await this.product.findMany({
-        take: limit,
         skip: (page - 1) * limit,
-        where: { available: true },
+        take: limit,
+        where: {
+          available: true,
+        },
       }),
-      page: page,
-      totalPage,
-      lastPage,
+      meta: {
+        total: totalPages,
+        page: page,
+        lastPage: lastPage,
+      },
     };
   }
 
   async findOne(id: number) {
-    const product = await this.product.findUnique({
-      where: {
-        id,
-        available: true,
-      },
+    const product = await this.product.findFirst({
+      where: { id, available: true },
     });
 
     if (!product) {
-      throw new NotFoundException(`Product with id ${id} not found`);
+      throw new RpcException({
+        message: `Product with id #${id} not found`,
+        status: HttpStatus.BAD_REQUEST,
+      });
     }
 
     return product;
   }
 
-  async update(id: number, updateProductDto: updateProductDto) {
-    const { id: _, ...data } = updateProductDto; // para no recibir 2 veces el ID
+  async update(id: number, updateProductDto: UpdateProductDto) {
+    const { id: __, ...data } = updateProductDto;
+
     await this.findOne(id);
 
     return this.product.update({
-      where: {
-        id,
-      },
-      data,
+      where: { id },
+      data: data,
     });
   }
 
   async remove(id: number) {
     await this.findOne(id);
 
-    return this.product.update({
-      where: {
-        id,
-      },
+    // return this.product.delete({
+    //   where: { id }
+    // });
+
+    const product = await this.product.update({
+      where: { id },
       data: {
         available: false,
       },
     });
+
+    return product;
   }
 }
